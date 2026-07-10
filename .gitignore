@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+temp_*.pdf
+.venv/
+venv/
+*.db-journal

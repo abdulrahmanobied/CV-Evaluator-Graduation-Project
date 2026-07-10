@@ -1,0 +1,4 @@
+John Doe
+Software Engineer
+Skills: Python, SQL, Machine Learning
+Experience: 3 years at Tech Company
