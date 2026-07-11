@@ -26,6 +26,15 @@ st.set_page_config(
     layout="wide"
 )
 
+# Persist results across reruns (e.g. when clicking the search button),
+# otherwise Streamlit would wipe the evaluation results off the screen.
+if "eval_results" not in st.session_state:
+    st.session_state.eval_results = None
+if "eval_used_smart_matching" not in st.session_state:
+    st.session_state.eval_used_smart_matching = False
+if "search_matches" not in st.session_state:
+    st.session_state.search_matches = None
+
 # ==========================================
 # Header
 # ==========================================
@@ -204,49 +213,58 @@ if st.button("🚀 Evaluate Candidates", type="primary"):
                 os.remove(temp_path)
 
         # ==========================================
-        # Display Results
+        # Store results in session_state so they survive reruns
         # ==========================================
         if results:
-            # Sort by final score
             results_sorted = sorted(results, key=lambda x: x["Final Score"], reverse=True)
-
-            st.divider()
-            st.header("🏆 Ranking Results")
-
-            if use_smart_matching:
-                st.info("🧠 Smart AI Matching was used — skills are matched by meaning, not just exact text.")
-
-            # Top candidate highlight
-            best = results_sorted[0]
-            st.success(f"🥇 Best Candidate: **{best['Name']}** — Score: **{best['Final Score']}%**")
-
-            # Results table (drop the raw match_details column from the table view)
-            st.subheader("📊 All Candidates")
-            df = pd.DataFrame(results_sorted).drop(columns=["Match Details"])
-            st.dataframe(df, use_container_width=True)
-
-            # Detailed cards
-            st.subheader("📋 Detailed Reports")
-            for i, r in enumerate(results_sorted):
-                with st.expander(f"#{i+1} — {r['Name']} ({r['Final Score']}%) — {r['Suitability']}"):
-                    col1, col2, col3 = st.columns(3)
-                    col1.metric("Final Score",  f"{r['Final Score']}%")
-                    col2.metric("Skill Score",  r['Skill Score'])
-                    col3.metric("Exp Score",    r['Exp Score'])
-
-                    st.write(f"📧 **Email:** {r['Email']}")
-                    st.write(f"🎓 **Education:** {r['Education']}")
-                    st.write(f"💼 **Experience:** {r['Experience (yrs)']} years")
-                    st.write(f"✅ **Matched Skills:** {r['Matched Skills'] or 'None'}")
-                    st.write(f"❌ **Missing Skills:** {r['Missing Skills'] or 'None'}")
-                    st.write(f"🤖 **AI Classifier (Neural Network):** {r['AI Classifier']} (confidence: {r['AI Confidence']})")
-
-                    if r["Match Details"]:
-                        st.write("🔍 **AI Match Details:**")
-                        for d in r["Match Details"]:
-                            st.write(f"   - {d}")
+            st.session_state.eval_results = results_sorted
+            st.session_state.eval_used_smart_matching = use_smart_matching
         else:
+            st.session_state.eval_results = None
             st.error("❌ Could not process any of the uploaded CVs.")
+
+# ==========================================
+# Display Results (persists across reruns via session_state)
+# ==========================================
+if st.session_state.eval_results:
+    results_sorted = st.session_state.eval_results
+    use_smart_matching_display = st.session_state.eval_used_smart_matching
+
+    st.divider()
+    st.header("🏆 Ranking Results")
+
+    if use_smart_matching_display:
+        st.info("🧠 Smart AI Matching was used — skills are matched by meaning, not just exact text.")
+
+    # Top candidate highlight
+    best = results_sorted[0]
+    st.success(f"🥇 Best Candidate: **{best['Name']}** — Score: **{best['Final Score']}%**")
+
+    # Results table (drop the raw match_details column from the table view)
+    st.subheader("📊 All Candidates")
+    df = pd.DataFrame(results_sorted).drop(columns=["Match Details"])
+    st.dataframe(df, use_container_width=True)
+
+    # Detailed cards
+    st.subheader("📋 Detailed Reports")
+    for i, r in enumerate(results_sorted):
+        with st.expander(f"#{i+1} — {r['Name']} ({r['Final Score']}%) — {r['Suitability']}"):
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Final Score",  f"{r['Final Score']}%")
+            col2.metric("Skill Score",  r['Skill Score'])
+            col3.metric("Exp Score",    r['Exp Score'])
+
+            st.write(f"📧 **Email:** {r['Email']}")
+            st.write(f"🎓 **Education:** {r['Education']}")
+            st.write(f"💼 **Experience:** {r['Experience (yrs)']} years")
+            st.write(f"✅ **Matched Skills:** {r['Matched Skills'] or 'None'}")
+            st.write(f"❌ **Missing Skills:** {r['Missing Skills'] or 'None'}")
+            st.write(f"🤖 **AI Classifier (Neural Network):** {r['AI Classifier']} (confidence: {r['AI Confidence']})")
+
+            if r["Match Details"]:
+                st.write("🔍 **AI Match Details:**")
+                for d in r["Match Details"]:
+                    st.write(f"   - {d}")
 
 # ==========================================
 # Semantic Candidate Search (Vector DB)
@@ -268,14 +286,18 @@ if st.button("🔎 Search Candidates"):
         st.error("❌ Please enter a search description.")
     else:
         matches = search_candidates_semantic(search_query, n_results=5)
-        if not matches:
-            st.warning("📭 No candidates found. Evaluate some candidates first.")
-        else:
-            st.subheader("Closest Matches")
-            for i, m in enumerate(matches, 1):
-                st.write(f"**#{i} — {m['name']}** (semantic distance: {m['distance']})")
-                st.write(f"   📧 {m['email']}")
-                st.write(f"   🛠️ Skills: {m['skills']}")
-                if m.get("matched_because"):
-                    st.write(f"   🎯 Matched because of: **{', '.join(m['matched_because'])}**")
-                st.write("---")
+        st.session_state.search_matches = matches
+
+if st.session_state.search_matches is not None:
+    matches = st.session_state.search_matches
+    if not matches:
+        st.warning("📭 No candidates found. Evaluate some candidates first.")
+    else:
+        st.subheader("Closest Matches")
+        for i, m in enumerate(matches, 1):
+            st.write(f"**#{i} — {m['name']}** (semantic distance: {m['distance']})")
+            st.write(f"   📧 {m['email']}")
+            st.write(f"   🛠️ Skills: {m['skills']}")
+            if m.get("matched_because"):
+                st.write(f"   🎯 Matched because of: **{', '.join(m['matched_because'])}**")
+            st.write("---")
