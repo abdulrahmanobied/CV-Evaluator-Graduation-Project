@@ -276,6 +276,6 @@ if st.button("🔎 Search Candidates"):
                 st.write(f"**#{i} — {m['name']}** (semantic distance: {m['distance']})")
                 st.write(f"   📧 {m['email']}")
                 st.write(f"   🛠️ Skills: {m['skills']}")
-                if m["matched_because"]:
+                if m.get("matched_because"):
                     st.write(f"   🎯 Matched because of: **{', '.join(m['matched_because'])}**")
                 st.write("---")
