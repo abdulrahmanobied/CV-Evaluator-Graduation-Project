@@ -13,6 +13,7 @@ from job_matcher import calculate_skill_score, calculate_experience_score, calcu
 from semantic_matcher import calculate_semantic_skill_score
 from database import init_db, save_result
 from vector_store import add_candidate_to_vector_store, search_candidates_semantic
+from ai_classifier import classify_suitability
 
 # ==========================================
 # Page Configuration
@@ -153,6 +154,11 @@ if st.button("🚀 Evaluate Candidates", type="primary"):
 
                     missing_skills = [s for s in required_skills if s not in matched_required]
 
+                    # AI classifier (Scikit-learn neural network) - additional AI-based signal
+                    ai_label, ai_confidence = classify_suitability(
+                        skill_score, experience_score, education_score
+                    )
+
                     results.append({
                         "File":             file.name,
                         "Name":             candidate["name"] or "Unknown",
@@ -166,6 +172,8 @@ if st.button("🚀 Evaluate Candidates", type="primary"):
                         "Final Score":      final_score,
                         "Suitability":      suitability,
                         "Match Details":    match_details,
+                        "AI Classifier":    ai_label,
+                        "AI Confidence":    f"{ai_confidence}%",
                     })
 
                     # Save this candidate's result into the SQL database
@@ -231,6 +239,7 @@ if st.button("🚀 Evaluate Candidates", type="primary"):
                     st.write(f"💼 **Experience:** {r['Experience (yrs)']} years")
                     st.write(f"✅ **Matched Skills:** {r['Matched Skills'] or 'None'}")
                     st.write(f"❌ **Missing Skills:** {r['Missing Skills'] or 'None'}")
+                    st.write(f"🤖 **AI Classifier (Neural Network):** {r['AI Classifier']} (confidence: {r['AI Confidence']})")
 
                     if r["Match Details"]:
                         st.write("🔍 **AI Match Details:**")
@@ -267,4 +276,6 @@ if st.button("🔎 Search Candidates"):
                 st.write(f"**#{i} — {m['name']}** (semantic distance: {m['distance']})")
                 st.write(f"   📧 {m['email']}")
                 st.write(f"   🛠️ Skills: {m['skills']}")
+                if m["matched_because"]:
+                    st.write(f"   🎯 Matched because of: **{', '.join(m['matched_because'])}**")
                 st.write("---")

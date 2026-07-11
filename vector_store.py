@@ -11,12 +11,31 @@
 
 import chromadb
 import os
+from sentence_transformers import util
+from semantic_matcher import _model as _st_model  # reuse the same AI model already loaded
 
 # Persistent storage on disk (not in-memory), so data survives between runs
 DB_FOLDER = os.path.join(os.path.dirname(__file__), "vector_db")
 
 _client = chromadb.PersistentClient(path=DB_FOLDER)
 _collection = _client.get_or_create_collection(name="candidates")
+
+
+def _get_matching_reasons(query, skills, top_n=3):
+    """
+    Given a search query and a candidate's skill list, find which
+    specific skills are closest in meaning to the query. This turns
+    a vague "why did this candidate match?" into a clear answer.
+    """
+    if not skills:
+        return []
+
+    query_embedding = _st_model.encode(query, convert_to_tensor=True)
+    skill_embeddings = _st_model.encode(skills, convert_to_tensor=True)
+    similarities = util.cos_sim(query_embedding, skill_embeddings)[0]
+
+    ranked = sorted(zip(skills, similarities.tolist()), key=lambda x: x[1], reverse=True)
+    return [skill for skill, score in ranked[:top_n]]
 
 
 def add_candidate_to_vector_store(candidate_id, name, email, skills, summary_text=""):
@@ -38,7 +57,7 @@ def add_candidate_to_vector_store(candidate_id, name, email, skills, summary_tex
 def search_candidates_semantic(query, n_results=5):
     """
     Search stored candidates by meaning (not exact keywords).
-    Returns a list of dicts: name, email, skills, match_distance
+    Returns a list of dicts: name, email, skills, distance, matched_because
     """
     count = _collection.count()
     if count == 0:
@@ -49,11 +68,15 @@ def search_candidates_semantic(query, n_results=5):
 
     matches = []
     for metadata, distance in zip(results["metadatas"][0], results["distances"][0]):
+        skills_list = [s.strip() for s in metadata["skills"].split(",") if s.strip()]
+        matched_because = _get_matching_reasons(query, skills_list, top_n=3)
+
         matches.append({
             "name": metadata["name"],
             "email": metadata["email"],
             "skills": metadata["skills"],
             "distance": round(distance, 3),
+            "matched_because": matched_because,
         })
     return matches
 
@@ -97,6 +120,7 @@ if __name__ == "__main__":
         print(f"#{i} — {r['name']} (distance: {r['distance']})")
         print(f"     Email:  {r['email']}")
         print(f"     Skills: {r['skills']}")
+        print(f"     Matched because: {', '.join(r['matched_because'])}")
         print("-" * 50)
 
     print("=" * 60)
