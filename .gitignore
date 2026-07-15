@@ -4,3 +4,5 @@ temp_*.pdf
 .venv/
 venv/
 *.db-journal
+candidates.db
+vector_db/
