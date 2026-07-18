@@ -9,6 +9,8 @@
 import re
 import spacy
 
+from skill_utils import find_abbreviations_in_text
+
 # Load the English NLP model
 nlp = spacy.load("en_core_web_sm")
 
@@ -45,7 +47,18 @@ def extract_name(text):
 
 
 def extract_skills(text):
-    """Extract skills by matching against a predefined skills list"""
+    """
+    Extract skills from CV text using two passes:
+      1) Predefined SKILLS_LIST, matched as a whole word/phrase
+         (e.g. "machine learning" — NOT as a substring, so "r" won't
+         match inside "career" and "go" won't match inside "going")
+      2) Known abbreviations as WHOLE WORDS (e.g. "ML" -> "machine learning"),
+         via skill_utils.find_abbreviations_in_text()
+
+    Both passes feed into ONE final list, de-duplicated, so a skill
+    written as "ML" or written out as "Machine Learning" ends up
+    represented the same way downstream (matching, storage, display).
+    """
     SKILLS_LIST = [
         # Programming Languages
         "python", "java", "javascript", "c++", "c#", "ruby", "swift", "kotlin",
@@ -66,10 +79,32 @@ def extract_skills(text):
     ]
 
     text_lower = text.lower()
+
+    # Pass 1: predefined list, matched as a WHOLE WORD/PHRASE
+    # (not substring match — e.g. "r" must NOT match inside "career",
+    # "go" must NOT match inside "going", etc.)
+    #
+    # We can't use plain \b here because some skills end in
+    # non-word characters (e.g. "c++", "c#"), and \b only fires at a
+    # transition between a word char and a non-word char — it won't
+    # match right after "++" if followed by another non-word char
+    # (like a space or period). Instead we manually check that the
+    # character immediately before/after the match isn't alphanumeric.
     found_skills = []
     for skill in SKILLS_LIST:
-        if skill in text_lower:
+        pattern = r'(?<![a-z0-9])' + re.escape(skill) + r'(?![a-z0-9])'
+        if re.search(pattern, text_lower):
             found_skills.append(skill)
+
+    # Pass 2: known abbreviations, matched as whole words only
+    # (e.g. "ML" -> "machine learning", "DB" -> "database")
+    abbreviation_skills = find_abbreviations_in_text(text)
+
+    # Merge + de-duplicate, keeping first-seen order
+    for skill in abbreviation_skills:
+        if skill not in found_skills:
+            found_skills.append(skill)
+
     return found_skills
 
 
@@ -157,4 +192,27 @@ if __name__ == "__main__":
     print(f"  Education:   {extracted['education']}")
     print(f"  Experience:  {extracted['experience_years']} years")
     print(f"  Skills:      {', '.join(extracted['skills'])}")
+    print("=" * 50)
+
+    # Extra test: CV written with abbreviations only (like Sara Ibrahim's CV)
+    print("\n" + "=" * 50)
+    print("  Extra Test - Abbreviations-only CV (Sara style)")
+    print("=" * 50)
+
+    sara_cv = """
+    Sara Ibrahim
+    Email: sara.ibrahim@email.com
+    Phone: +962-79-333-2211
+
+    Summary: Engineer with 5 years of experience in AI and databases.
+
+    Skills: Python, ML, AI, DB, Docker, Git
+
+    Education: Bachelor's Degree in Software Engineering - 2020
+
+    Experience: AI Engineer at SmartSoft (2021 - Present)
+    """
+
+    sara_extracted = extract_all(sara_cv)
+    print(f"  Skills: {', '.join(sara_extracted['skills'])}")
     print("=" * 50)
