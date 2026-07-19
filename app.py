@@ -199,13 +199,22 @@ if st.button("🚀 Evaluate Candidates", type="primary"):
                         "missing_skills": missing_skills,
                     })
 
-                    # Also save this candidate's profile into the Vector DB for semantic search
+                    # Also save this candidate's profile into the Vector DB for semantic search.
+                    #
+                    # IMPORTANT: summary_text must describe the CANDIDATE, not the job
+                    # they're being evaluated against. It used to include job_title
+                    # (e.g. "AI Engineer candidate with..."), which meant EVERY
+                    # candidate's stored profile started with the same "AI Engineer"
+                    # phrase regardless of their actual skills. On short profiles
+                    # (few skills), that one irrelevant phrase could dominate the
+                    # embedding and skew semantic search rankings. We only store
+                    # candidate-specific facts here instead.
                     add_candidate_to_vector_store(
                         candidate_id=f"{candidate['email'] or file.name}",
                         name=candidate["name"] or "Unknown",
                         email=candidate["email"] or "N/A",
                         skills=candidate["skills"],
-                        summary_text=f"{job_title} candidate with {candidate['experience_years']} years experience, {candidate['education']} education"
+                        summary_text=f"Candidate with {candidate['experience_years']} years of experience, {candidate['education']} education"
                     )
 
                 # Clean up temp file

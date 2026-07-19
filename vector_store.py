@@ -10,6 +10,7 @@
 """
 
 import chromadb
+from chromadb import EmbeddingFunction, Documents, Embeddings
 import os
 from sentence_transformers import util
 from semantic_matcher import _model as _st_model  # reuse the same AI model already loaded
@@ -17,8 +18,31 @@ from semantic_matcher import _model as _st_model  # reuse the same AI model alre
 # Persistent storage on disk (not in-memory), so data survives between runs
 DB_FOLDER = os.path.join(os.path.dirname(__file__), "vector_db")
 
+
+class _SharedModelEmbeddingFunction(EmbeddingFunction):
+    """
+    Adapter that makes ChromaDB use the EXACT SAME sentence-transformers
+    model (_st_model) that the rest of this project already uses
+    (semantic_matcher.py, and _get_matching_reasons() below).
+
+    Without this, ChromaDB silently falls back to its own default
+    embedding model to compute storage/query embeddings (i.e. the
+    values used for ranking/"distance"), while _get_matching_reasons()
+    uses _st_model for its explanation. Two different embedding
+    models = two different "meanings" of similarity, which can
+    (and did) produce a ranking that disagrees with its own
+    "matched because of" explanation.
+    """
+
+    def __call__(self, input: Documents) -> Embeddings:
+        return _st_model.encode(list(input)).tolist()
+
+
 _client = chromadb.PersistentClient(path=DB_FOLDER)
-_collection = _client.get_or_create_collection(name="candidates")
+_collection = _client.get_or_create_collection(
+    name="candidates",
+    embedding_function=_SharedModelEmbeddingFunction()
+)
 
 
 def _get_matching_reasons(query, skills, top_n=3):
@@ -85,7 +109,10 @@ def clear_vector_store():
     """Delete all stored candidate profiles (useful for testing)"""
     global _collection
     _client.delete_collection(name="candidates")
-    _collection = _client.get_or_create_collection(name="candidates")
+    _collection = _client.get_or_create_collection(
+        name="candidates",
+        embedding_function=_SharedModelEmbeddingFunction()
+    )
 
 
 if __name__ == "__main__":
